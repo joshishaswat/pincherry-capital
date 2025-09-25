@@ -1,1 +1,28 @@
+# env & secrets
+.env
+.env.*
+*.env
+*.key
+*.pem
 
+# local state/cache
+tickers.json
+*.db
+*.sqlite
+*.log
+.cache/
+.cache-*/
+__pycache__/
+*.py[cod]
+
+# virtualenvs & tooling
+.venv/
+venv/
+pip-wheel-metadata/
+.python-version
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
+.history/
