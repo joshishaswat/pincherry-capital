@@ -180,6 +180,8 @@ def ensure_cached_short_volume(ticker: str, data: dict) -> tuple[pd.DataFrame, l
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "Finance Dashboard"
 
+server = app.server
+
 app.layout = html.Div(
     [
         html.H1("Finance Dashboard", style={"textAlign": "center"}),
