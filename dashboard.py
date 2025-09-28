@@ -186,7 +186,7 @@ app.layout = html.Div(
     [
         html.H1("Finance Dashboard", style={"textAlign": "center"}),
         # Single source of truth for user state
-        dcc.Store(id="app-store", data=load_data()),
+        dcc.Store(id="app-store", storage_type="local", data=load_data()),
         dcc.Tabs(id="tabs", value="shorts", children=[
             dcc.Tab(label="Short Interest", value="shorts"),
             dcc.Tab(label="Analyst Ratings", value="ratings"),
