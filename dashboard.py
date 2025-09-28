@@ -7,6 +7,8 @@ import plotly.express as px
 import dash
 from dash import dcc, html, Input, Output, State, no_update
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dotenv import load_dotenv
+load_dotenv() # Load local .env
 from os import getenv
 
 # ============================== Config & persistence ==============================
