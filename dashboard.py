@@ -56,17 +56,23 @@ def save_data(data):
 # ============================== Date helpers ==============================
 def last_business_day(d: dt.date | None = None) -> dt.date:
     d = d or dt.date.today()
-    # Snap weekends back to Friday
     while d.weekday() >= 5:  # Sat=5, Sun=6
+        d -= dt.timedelta(days=1)
+    return d
+
+def prev_business_day(d: dt.date | None = None) -> dt.date:
+    """Always return the most recent completed trading day (T-1)."""
+    d = (d or dt.date.today()) - dt.timedelta(days=1)
+    while d.weekday() >= 5:
         d -= dt.timedelta(days=1)
     return d
 
 def weekly_schedule_last_3_months(end_day: dt.date) -> list[dt.date]:
     """
-    Build ~weekly dates (~12–14 points) for ~3 months, ending at last business day.
-    Uses Fridays for consistency, plus today's last business day if different.
+    ~weekly series for ~3 months, ending at the previous business day (T-1).
+    Uses Fridays for consistency, plus T-1 if that’s not a Friday.
     """
-    end_bday = last_business_day(end_day)
+    end_bday = prev_business_day(end_day)   # <-- was last_business_day
     start = end_bday - dt.timedelta(days=92)
     fridays = pd.date_range(start, end_bday, freq="W-FRI").date.tolist()
     if not fridays or fridays[-1] != end_bday:
@@ -329,15 +335,14 @@ def sync_vertical_list(data, current_value):
 def maybe_refresh_weekly(_, selected_ticker, data):
     if not selected_ticker:
         return no_update
-    # Only attempt to append if the expected end moved
     hist = (data.get("shorts_history", {}) or {}).get(selected_ticker.upper(), [])
     last_cached = None
     if hist:
         try:
             last_cached = max(pd.to_datetime([h["date"] for h in hist]).date)
         except Exception:
-            last_cached = None
-    expected_end = last_business_day(dt.date.today())
+            pass
+    expected_end = prev_business_day(dt.date.today())   # <-- was last_business_day
     if last_cached and expected_end <= last_cached:
         return no_update
     _, _, updated = ensure_cached_short_volume(selected_ticker, data)
