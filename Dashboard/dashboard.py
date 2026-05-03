@@ -81,6 +81,161 @@ def weekly_schedule_last_3_months(end_day: dt.date) -> list[dt.date]:
         fridays = fridays[-14:]
     return sorted(set(fridays))
 
+# -------- Analyst from Polygon News (primary) + parser --------
+ACTION_WORDS = r"(upgrades?|downgrades?|initiates|maintains|reiterates|assumes|resumes)"
+RATING_WORDS = r"(Strong Buy|Outperform|Overweight|Equal[- ]?Weight|Market Perform|Peer Perform|Buy|Neutral|Hold|Reduce|Underweight|Sell|Negative|Positive|Sector Perform|Sector Weight)"
+_PT_NUM = r"\$?\s*(\d+(?:\.\d+)?)"
+
+def _parse_analyst_note(text: str) -> dict:
+    import re
+    s = re.sub(r"\s+", " ", text or "").strip()
+    # Firm + action
+    m_firm = re.search(rf"^(?P<firm>.+?)\s+(?P<action>{ACTION_WORDS})\b", s, flags=re.I)
+    firm = (m_firm.group("firm").strip() if m_firm else "").rstrip(":,.- ")
+    action = (m_firm.group("action").capitalize() if m_firm else "")
+    # Rating (from → to) in either order
+    m_to_from = re.search(rf"\bto\s+(?P<to>{RATING_WORDS})\s+(?:from|vs\.?)\s+(?P<from>{RATING_WORDS})", s, re.I)
+    m_from_to = re.search(rf"\bfrom\s+(?P<from>{RATING_WORDS})\s+to\s+(?P<to>{RATING_WORDS})", s, re.I)
+    rating = ""
+    if m_to_from or m_from_to:
+        g = (m_to_from or m_from_to).groupdict()
+        rating = f"{g['from']} → {g['to']}"
+
+    # Price target changes
+    pa, pt = "—", "—"
+    m_pt_to_from = re.search(rf"price target.*?\bto\s+{_PT_NUM}\s+(?:from|vs\.|previously)\s+{_PT_NUM}", s, re.I)
+    m_pt_from_to = re.search(rf"price target.*?\bfrom\s+{_PT_NUM}\s+to\s+{_PT_NUM}", s, re.I)
+    m_pt_sets    = re.search(rf"price target.*?\b(to|at|set at|sets at)\s+{_PT_NUM}", s, re.I)
+
+    def _fmt(oldv, newv):
+        try:
+            oldf, newf = float(oldv), float(newv)
+            return ("Raises" if newf > oldf else ("Lowers" if newf < oldf else "Reiterates")), f"{oldf:g} → {newf:g}"
+        except Exception:
+            return "—", f"{oldv} → {newv}"
+
+    if m_pt_to_from:
+        newv, oldv = m_pt_to_from.groups()[0], m_pt_to_from.groups()[2]
+        pa, pt = _fmt(oldv, newv)
+    elif m_pt_from_to:
+        oldv, newv = m_pt_from_to.groups()[0], m_pt_from_to.groups()[2]
+        pa, pt = _fmt(oldv, newv)
+    elif m_pt_sets:
+        newv = m_pt_sets.groups()[-1]
+        try:
+            pa, pt = "Sets", f"{float(newv):g}"
+        except Exception:
+            pa, pt = "Sets", f"{newv}"
+
+    return {"analyst": firm, "rating_action": action, "rating": rating, "price_action": pa, "price_target": pt}
+
+def _fetch_analyst_polygon_news(ticker: str, limit: int = 30) -> list[dict]:
+    cutoff = prev_business_day(dt.date.today())
+    start = cutoff - dt.timedelta(days=6)  # small buffer window
+    url = "https://api.polygon.io/v2/reference/news"
+    params = {
+        "ticker": ticker.upper(),
+        "published_utc.gte": start.isoformat(),
+        "published_utc.lte": (cutoff + dt.timedelta(days=1)).isoformat(),
+        "order": "desc",
+        "limit": limit,
+        "apiKey": POLYGON_API_KEY,
+    }
+    try:
+        r = requests.get(url, params=params, timeout=(3, 8))
+        r.raise_for_status()
+        results = (r.json() or {}).get("results", []) or []
+    except Exception:
+        return []
+
+    rows = []
+    for it in results:
+        title = it.get("title") or ""
+        desc  = it.get("description") or ""
+        txt   = f"{title}. {desc}"
+        parsed = _parse_analyst_note(txt)
+        if parsed["rating_action"] or ("price target" in txt.lower()):
+            d = pd.to_datetime(it.get("published_utc")).date() if it.get("published_utc") else None
+            if not d or d > cutoff:
+                continue
+            parsed["date"] = d.isoformat()
+            # If firm wasn’t captured, try title prefix (e.g., "B of A Securities:")
+            if not parsed["analyst"]:
+                head = title.split(":")[0][:60]
+                if any(w in head.lower() for w in ["securities","research","capital","markets","partners"]):
+                    parsed["analyst"] = head
+            rows.append(parsed)
+    rows.sort(key=lambda r: r["date"], reverse=True)
+    return rows
+
+# ---------- Analyst helpers (Yahoo Finance Upgrade/Downgrade feed) ----------
+def _yahoo_ud_url(ticker: str) -> str:
+    # Unofficial but stable JSON module Yahoo exposes
+    return f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{ticker}?modules=upgradeDowngradeHistory"
+
+def _safe_get(d, *keys, default=None):
+    for k in keys:
+        if not isinstance(d, dict) or k not in d:
+            return default
+        d = d[k]
+    return d
+
+def fetch_recent_analyst_actions(ticker: str, limit: int = 3) -> list[dict]:
+    # 1) Polygon News -> parsed (includes price-target deltas when present)
+    pn = _fetch_analyst_polygon_news(ticker, limit=30)
+    if pn:
+        return pn[:limit]
+
+    # 2) Fallback: Yahoo JSON (your previous code path)
+    url = _yahoo_ud_url(ticker.upper())
+    try:
+        r = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=(3, 6))
+        r.raise_for_status()
+        j = r.json()
+    except Exception as e:
+        return [{"date": "", "analyst": "", "rating_action": "ERROR", "rating": "", "price_action": "",
+                 "price_target": f"Failed to fetch: {e}"}]
+
+    history = _safe_get(j, "quoteSummary", "result", default=[]) or []
+    history = _safe_get(history[0] if history else {}, "upgradeDowngradeHistory", "history", default=[]) or []
+
+    cutoff = prev_business_day(dt.date.today())
+    rows = []
+    for h in history:
+        epoch = h.get("epochGradeDate") or h.get("gradeDate") or 0
+        d = dt.date.fromtimestamp(epoch) if epoch else None
+        if not d or d > cutoff:
+            continue
+        firm = h.get("firm") or h.get("company") or ""
+        action = (h.get("action") or "").capitalize()
+        from_g, to_g = h.get("fromGrade") or "", h.get("toGrade") or ""
+        rating_str = f"{from_g} → {to_g}".strip(" →")
+
+        pt_old = (h.get("priceTargetPrior") or h.get("priceTargetOld") or h.get("priceTargetFrom"))
+        pt_new = (h.get("priceTargetCurrent") or h.get("priceTargetNew") or h.get("priceTargetTo"))
+        if pt_old is not None and pt_new is not None:
+            try:
+                oldf, newf = float(pt_old), float(pt_new)
+                pa = "Raises" if newf > oldf else ("Lowers" if newf < oldf else "Reiterates")
+                pt = f"{oldf:g} → {newf:g}"
+            except Exception:
+                pa, pt = "—", f"{pt_old} → {pt_new}"
+        elif pt_new is not None:
+            pa, pt = "Sets", f"{pt_new}"
+        else:
+            pa, pt = "—", "—"
+
+        rows.append({
+            "date": d.isoformat(),
+            "analyst": firm,
+            "rating_action": action,
+            "rating": rating_str,
+            "price_action": pa,
+            "price_target": pt,
+        })
+    rows.sort(key=lambda r: r["date"], reverse=True)
+    return rows[:limit]
+
 # ============================== Polygon fetch (concurrent, tight timeouts) ==============================
 def _fetch_short_for_date(session: requests.Session, ticker: str, d: dt.date):
     url = "https://api.polygon.io/stocks/v1/short-volume"
@@ -212,16 +367,16 @@ app.layout = html.Div(
     [Input("tabs", "value"), Input("app-store", "data")],
 )
 def render_content(tab, data):
+    # Common: get current tickers from store
     shorts_df = pd.DataFrame(data.get("shorts", []))
-    ratings_dict = {k: pd.DataFrame(v) for k, v in (data.get("ratings") or {}).items()}
+    tickers = list(shorts_df["Ticker"]) if not shorts_df.empty and "Ticker" in shorts_df.columns else []
+    default_ticker = tickers[0] if tickers else None
 
+    # ===== Short Interest tab =====
     if tab == "shorts":
-        tickers = list(shorts_df["Ticker"]) if not shorts_df.empty and "Ticker" in shorts_df.columns else []
-        default_ticker = tickers[0] if tickers else None
-
         return html.Div(
             [
-                # Left: tickers + add/delete
+                # LEFT: tickers + add/delete
                 html.Div(
                     [
                         html.H3("Tickers", style={"marginBottom": "8px"}),
@@ -240,7 +395,7 @@ def render_content(tab, data):
                     style={"width": "220px", "padding": "10px 12px",
                            "borderRight": "1px solid #e5e7eb", "flexShrink": 0},
                 ),
-                # Right: chart + diagnostics
+                # RIGHT: chart + diagnostics
                 html.Div(
                     [
                         dcc.Graph(id="shorts-line", style={"height": "520px"}),
@@ -252,13 +407,46 @@ def render_content(tab, data):
             style={"display": "flex", "alignItems": "stretch"},
         )
 
-    # Ratings tab
-    options = [{"label": t, "value": t} for t in ratings_dict.keys()]
-    default_value = options[0]["value"] if options else None
-    return html.Div([
-        dcc.Dropdown(id="ratings-dropdown", options=options, value=default_value, placeholder="Select a ticker"),
-        dcc.Graph(id="ratings-graph", style={"marginTop": "10px"}),
-    ])
+    # ===== Analyst Ratings tab =====
+    if tab == "ratings":
+        return html.Div(
+            [
+                # LEFT: vertical ticker list (separate selection for ratings)
+                html.Div(
+                    [
+                        html.H3("Tickers", style={"marginBottom": "8px"}),
+                        dcc.RadioItems(
+                            id="ratings-radio",
+                            options=[{"label": t, "value": t} for t in tickers],
+                            value=default_ticker,
+                            labelStyle={"display": "block", "margin": "6px 0"},
+                            inputStyle={"marginRight": "8px"},
+                        ),
+                    ],
+                    style={"width": "220px", "padding": "10px 12px",
+                           "borderRight": "1px solid #e5e7eb", "flexShrink": 0},
+                ),
+                # RIGHT: header + refresh + analyst cards + diagnostics
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.H3("Most Recent Analyst Notes (prev trading day or earlier)", style={"margin": "0"}),
+                                html.Button("Refresh", id="analyst-refresh-btn", n_clicks=0, style={"marginLeft": "10px"}),
+                            ],
+                            style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "6px"},
+                        ),
+                        html.Div(id="analyst-cards"),
+                        html.Div(id="analyst-diag", style={"fontSize": "12px", "color": "#555", "marginTop": "6px"}),
+                    ],
+                    style={"flex": 1, "padding": "10px 16px"},
+                ),
+            ],
+            style={"display": "flex", "alignItems": "stretch"},
+        )
+
+    # Fallback (no tab matched)
+    return html.Div()
 
 # ============================== Add/Delete tickers (persisted) ==============================
 @app.callback(
@@ -402,19 +590,55 @@ def _render_diag(diag_rows: list[dict]):
         )
     ], open=False)
 
-# ============================== Ratings (unchanged) ==============================
+def _analyst_cards_layout(rows: list[dict]):
+    if not rows:
+        return html.Div("No analyst notes found for the selected ticker (prior to today).")
+
+    def _card(r):
+        return html.Div(
+            [
+                html.Div([
+                    html.Div(r.get("analyst", "—"), style={"fontWeight": 600, "fontSize": "16px"}),
+                    html.Div(r.get("date", "—"), style={"fontSize": "12px", "color": "#666"}),
+                ], style={"marginBottom": "6px"}),
+                html.Table([
+                    html.Tbody([
+                        html.Tr([html.Td("Rating Action", style={"fontWeight": 600, "paddingRight": "10px"}),
+                                 html.Td(r.get("rating_action", "—"))]),
+                        html.Tr([html.Td("Rating", style={"fontWeight": 600, "paddingRight": "10px"}),
+                                 html.Td(r.get("rating", "—"))]),
+                        html.Tr([html.Td("Price Action", style={"fontWeight": 600, "paddingRight": "10px"}),
+                                 html.Td(r.get("price_action", "—"))]),
+                        html.Tr([html.Td("Price Target", style={"fontWeight": 600, "paddingRight": "10px"}),
+                                 html.Td(r.get("price_target", "—"))]),
+                    ])
+                ], style={"width": "100%"}),
+            ],
+            style={
+                "border": "1px solid #e5e7eb",
+                "borderRadius": "12px",
+                "padding": "12px 14px",
+                "marginBottom": "10px",
+                "boxShadow": "0 1px 2px rgba(0,0,0,0.04)",
+            },
+        )
+
+    return html.Div([_card(r) for r in rows])
+
 @app.callback(
-    Output("ratings-graph", "figure"),
-    [Input("ratings-dropdown", "value"), Input("app-store", "data")],
+    [Output("analyst-cards", "children"), Output("analyst-diag", "children")],
+    [Input("ratings-radio", "value"), Input("tabs", "value"), Input("analyst-refresh-btn", "n_clicks")],
+    prevent_initial_call=False,
 )
-def update_ratings_chart(ticker, data):
-    if not ticker:
-        return px.bar(title="No ticker selected")
-    series = (data.get("ratings") or {}).get(ticker, [])
-    df = pd.DataFrame(series)
-    if df.empty:
-        return px.bar(title=f"No ratings for {ticker}")
-    return px.pie(df, names="Rating", values="Count", title=f"Analyst Ratings for {ticker}")
+def update_analyst_cards(ticker, active_tab, _n):
+    if active_tab != "ratings" or not ticker:
+        return no_update, no_update
+    rows = fetch_recent_analyst_actions(ticker, limit=3)
+    diag = ""
+    if rows and rows[0].get("rating_action") == "ERROR":
+        diag = rows[0].get("price_target", "")
+        rows = []
+    return _analyst_cards_layout(rows), diag
 
 # ============================== Main ==============================
 if __name__ == "__main__":

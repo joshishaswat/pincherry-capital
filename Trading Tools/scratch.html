@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MES Risk Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 p-8 font-sans flex justify-center items-start min-h-screen">
+    <div class="w-full max-w-lg bg-white rounded-xl shadow-lg p-6 border border-slate-200">
+        <h1 class="text-2xl font-bold text-slate-800 mb-6 border-b pb-2">MES Risk Dashboard</h1>
+
+        <div class="space-y-5">
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-1">Current VIX</label>
+                <input type="number" id="vix" value="18" step="0.1" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-1">Available Cash Balance ($)</label>
+                <input type="number" id="cash" value="16000" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 pt-2">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1">Active Longs</label>
+                    <input type="number" id="longs" value="1" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-1">Active Shorts</label>
+                    <input type="number" id="shorts" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                </div>
+            </div>
+        </div>
+
+        <div id="result" class="mt-8 p-5 rounded-lg border transition-colors duration-200">
+            <h2 id="status" class="text-xl font-black tracking-tight"></h2>
+            <div class="mt-3 text-sm font-medium">
+                <p id="limits" class="mb-1"></p>
+                <p id="explanation" class="opacity-80"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function calculateRisk() {
+            const vix = parseFloat(document.getElementById('vix').value) || 0;
+            const cash = parseFloat(document.getElementById('cash').value) || 0;
+            const longs = parseInt(document.getElementById('longs').value) || 0;
+            const shorts = parseInt(document.getElementById('shorts').value) || 0;
+
+            let maxLong = 0;
+            let maxShort = 0;
+            let rule = "";
+
+            // Your Logic Rules
+            if (vix >= 20) {
+                maxLong = 3;
+                maxShort = 3;
+                rule = "Because VIX is 20 or above, you are permitted to scale up to 3 contracts regardless of cash.";
+            } else if (vix >= 17.50 && vix < 20) {
+                if (cash >= 15000) {
+                    maxLong = 2;
+                    maxShort = 2;
+                    rule = "Because VIX is between 17.50 and 20, and cash is over $15k, you are capped at 2 contracts each.";
+                } else {
+                    maxLong = 1;
+                    maxShort = 1;
+                    rule = "Because VIX is between 17.50 and 20, and cash is under $15k, you are tightly capped at 1 contract each.";
+                }
+            } else {
+                maxLong = 4;
+                maxShort = 3;
+                rule = "Because VIX is below 17.50, limits are expanded to 4 Longs and 3 Shorts.";
+            }
+
+            const isSafe = longs <= maxLong && shorts <= maxShort;
+            const resultDiv = document.getElementById('result');
+            const statusText = document.getElementById('status');
+            const limitsText = document.getElementById('limits');
+            const explanationText = document.getElementById('explanation');
+
+            // Update UI based on safety status
+            if (isSafe) {
+                resultDiv.className = "mt-8 p-5 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-800";
+                statusText.innerText = "✓ SAFE (Within Limits)";
+            } else {
+                resultDiv.className = "mt-8 p-5 rounded-lg border bg-rose-50 border-rose-200 text-rose-800";
+                statusText.innerText = "⚠ OVERLEVERAGED";
+            }
+
+            limitsText.innerText = `Current Maximums: ${maxLong} Longs | ${maxShort} Shorts`;
+            explanationText.innerText = rule;
+        }
+
+        // Initialize on load
+        calculateRisk();
+    </script>
+</body>
+</html>
