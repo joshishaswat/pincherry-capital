@@ -1,0 +1,26 @@
+//@version=5
+indicator("MES Drop Alert - High to Low", overlay=true)
+
+// Settings (Adjustable in the indicator UI)
+drop_limit_pct = input.float(-0.50, title="Drop Limit %", step=0.1)
+lookback_mins = input.int(30, title="Lookback Window (Minutes)", step=5)
+
+// Determine how many bars equal the lookback window
+bars_to_check = math.max(1, lookback_mins / (timeframe.isintraday ? timeframe.multiplier : 1))
+
+// Calculate the highest high within the lookback window
+recent_high = ta.highest(high, bars_to_check)
+
+// Calculate percentage drawdown from that recent peak to the CURRENT LOW
+pct_change = (low - recent_high) / recent_high
+drop_limit = drop_limit_pct / 100
+
+// Condition check
+is_dropped = pct_change <= drop_limit
+
+// Trigger the Alert
+if is_dropped
+    alert("MES Alert: Price dropped " + str.tostring(pct_change * 100, "#.##") + "% from the recent high!", alert.freq_once_per_bar)
+
+// Visual Indicator (Show a red background when condition is met)
+bgcolor(is_dropped ? color.new(color.red, 80) : na)
