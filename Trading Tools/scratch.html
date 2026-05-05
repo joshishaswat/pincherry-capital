@@ -11,24 +11,42 @@
         <h1 class="text-2xl font-bold text-slate-800 mb-6 border-b pb-2">MES Risk Dashboard</h1>
 
         <div class="space-y-5">
-            <div>
-                <label class="block text-sm font-semibold text-slate-700 mb-1">Current VIX</label>
-                <input type="number" id="vix" value="18" step="0.1" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
-            </div>
-
-            <div>
-                <label class="block text-sm font-semibold text-slate-700 mb-1">Available Cash Balance ($)</label>
-                <input type="number" id="cash" value="16000" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
-            </div>
-
-            <div class="grid grid-cols-2 gap-4 pt-2">
+            <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-semibold text-slate-700 mb-1">Active Longs</label>
-                    <input type="number" id="longs" value="1" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                    <label class="block text-sm font-semibold text-slate-700 mb-1">Current VIX</label>
+                    <input type="number" id="vix" value="16.9" step="0.1" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-slate-700 mb-1">Active Shorts</label>
-                    <input type="number" id="shorts" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                    <label class="block text-sm font-semibold text-slate-700 mb-1">Cash Balance ($15,000)</label>
+                    <input type="number" id="cash" value="14100" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">Initial Entry</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Initial Longs</label>
+                        <input type="number" id="initLongs" value="2" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Initial Shorts</label>
+                        <input type="number" id="initShorts" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">Total Scaled Size</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Active Longs</label>
+                        <input type="number" id="totalLongs" value="3" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-slate-700 mb-1">Active Shorts</label>
+                        <input type="number" id="totalShorts" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                    </div>
                 </div>
             </div>
         </div>
@@ -39,48 +57,72 @@
                 <p id="limits" class="mb-1"></p>
                 <p id="explanation" class="opacity-80"></p>
             </div>
+
+            <div class="mt-4 p-3 bg-white/50 rounded border border-white/20">
+                <p id="points" class="font-bold text-base"></p>
+            </div>
         </div>
     </div>
 
-    <script>
+   <script>
         function calculateRisk() {
             const vix = parseFloat(document.getElementById('vix').value) || 0;
             const cash = parseFloat(document.getElementById('cash').value) || 0;
-            const longs = parseInt(document.getElementById('longs').value) || 0;
-            const shorts = parseInt(document.getElementById('shorts').value) || 0;
+            const initLongs = parseInt(document.getElementById('initLongs').value) || 0;
+            const initShorts = parseInt(document.getElementById('initShorts').value) || 0;
+            const totalLongs = parseInt(document.getElementById('totalLongs').value) || 0;
+            const totalShorts = parseInt(document.getElementById('totalShorts').value) || 0;
 
-            let maxLong = 0;
-            let maxShort = 0;
+            let isSafe = true;
             let rule = "";
+            let limitDisplay = "";
+            let pointsToWait = 0;
 
-            // Your Logic Rules
+            // 1. Calculate Leverage Limits
             if (vix >= 20) {
-                maxLong = 3;
-                maxShort = 3;
-                rule = "Because VIX is 20 or above, you are permitted to scale up to 3 contracts regardless of cash.";
-            } else if (vix >= 17.50 && vix < 20) {
                 if (cash >= 15000) {
-                    maxLong = 2;
-                    maxShort = 2;
-                    rule = "Because VIX is between 17.50 and 20, and cash is over $15k, you are capped at 2 contracts each.";
+                    rule = "VIX ≥ 20 & Cash ≥ $15k: Initial entry up to 1L and 1S. Can scale to 3 max.";
+                    limitDisplay = "Max Initial: 1L | 1S. Max Total: 3L | 3S.";
+                    isSafe = (initLongs <= 1) && (initShorts <= 1) && (totalLongs <= 3) && (totalShorts <= 3);
                 } else {
-                    maxLong = 1;
-                    maxShort = 1;
-                    rule = "Because VIX is between 17.50 and 20, and cash is under $15k, you are tightly capped at 1 contract each.";
+                    rule = "VIX ≥ 20 & Cash < $15k: Initial entry restricted to 1 contract TOTAL. Can scale to 3 max.";
+                    limitDisplay = "Max Initial: 1 Total (L or S). Max Total: 3L | 3S.";
+                    isSafe = ((initLongs + initShorts) <= 1) && (totalLongs <= 3) && (totalShorts <= 3);
+                }
+            } else if (vix > 17.50 && vix < 20) {
+                if (cash >= 15000) {
+                    rule = "17.50 < VIX < 20 & Cash ≥ $15k: Capped at 2L and 2S total. No scaling beyond this.";
+                    limitDisplay = "Max Total Allowed: 2L | 2S.";
+                    isSafe = (initLongs <= 2) && (initShorts <= 2) && (totalLongs <= 2) && (totalShorts <= 2);
+                } else {
+                    rule = "17.50 < VIX < 20 & Cash < $15k: Capped at 1L and 1S total. No scaling beyond this.";
+                    limitDisplay = "Max Total Allowed: 1L | 1S.";
+                    isSafe = (initLongs <= 1) && (initShorts <= 1) && (totalLongs <= 1) && (totalShorts <= 1);
                 }
             } else {
-                maxLong = 4;
-                maxShort = 3;
-                rule = "Because VIX is below 17.50, limits are expanded to 4 Longs and 3 Shorts.";
+                rule = "VIX ≤ 17.50: Initial entry up to 2L and 1S. Can scale to 4L and 3S max.";
+                limitDisplay = "Max Initial: 2L | 1S. Max Total: 4L | 3S.";
+                isSafe = (initLongs <= 2) && (initShorts <= 1) && (totalLongs <= 4) && (totalShorts <= 3);
             }
 
-            const isSafe = longs <= maxLong && shorts <= maxShort;
+            // 2. Calculate Points to Wait
+            if (vix > 25) {
+                pointsToWait = 50;
+            } else if (vix > 20) {
+                pointsToWait = 40;
+            } else if (vix >= 17.50) {
+                pointsToWait = 30;
+            } else {
+                pointsToWait = 20;
+            }
+
+            // 3. Update the UI
             const resultDiv = document.getElementById('result');
             const statusText = document.getElementById('status');
             const limitsText = document.getElementById('limits');
             const explanationText = document.getElementById('explanation');
+            const pointsText = document.getElementById('points');
 
-            // Update UI based on safety status
             if (isSafe) {
                 resultDiv.className = "mt-8 p-5 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-800";
                 statusText.innerText = "✓ SAFE (Within Limits)";
@@ -89,8 +131,9 @@
                 statusText.innerText = "⚠ OVERLEVERAGED";
             }
 
-            limitsText.innerText = `Current Maximums: ${maxLong} Longs | ${maxShort} Shorts`;
+            limitsText.innerText = limitDisplay;
             explanationText.innerText = rule;
+            pointsText.innerText = `Scaling Trigger: Wait ${pointsToWait} points before adding to positions.`;
         }
 
         // Initialize on load
