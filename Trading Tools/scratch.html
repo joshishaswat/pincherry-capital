@@ -6,60 +6,60 @@
     <title>MES Risk Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-100 p-8 font-sans flex justify-center items-start min-h-screen">
-    <div class="w-full max-w-lg bg-white rounded-xl shadow-lg p-6 border border-slate-200">
-        <h1 class="text-2xl font-bold text-slate-800 mb-6 border-b pb-2">MES Risk Dashboard</h1>
+<body class="bg-slate-100 p-4 font-sans flex justify-center items-start min-h-screen">
+    <div class="w-full max-w-lg bg-white rounded-xl shadow-lg p-5 border border-slate-200 mt-4">
+        <h1 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">MES Risk Dashboard</h1>
 
-        <div class="space-y-5">
-            <div class="grid grid-cols-2 gap-4">
+        <div class="space-y-3">
+            <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 mb-1">Current VIX</label>
-                    <input type="number" id="vix" value="18.00" step="0.1" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                    <input type="number" id="vix" value="18" step="0.1" class="w-full rounded-lg border-slate-300 shadow-sm p-1.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 mb-1">Cash Balance ($15,000)</label>
-                    <input type="number" id="cash" value="13000" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                    <input type="number" id="cash" value="13000" class="w-full rounded-lg border-slate-300 shadow-sm p-1.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
                 </div>
             </div>
 
-            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">Initial Entry</h3>
-                <div class="grid grid-cols-2 gap-4">
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Initial Entry</h3>
+                <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">Initial Longs</label>
-                        <input type="number" id="initLongs" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Initial Longs</label>
+                        <input type="number" id="initLongs" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-1.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">Initial Shorts</label>
-                        <input type="number" id="initShorts" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Initial Shorts</label>
+                        <input type="number" id="initShorts" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-1.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
                     </div>
                 </div>
             </div>
 
-            <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">Total Scaled Size</h3>
-                <div class="grid grid-cols-2 gap-4">
+            <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Total Scaled Size</h3>
+                <div class="grid grid-cols-2 gap-3">
                     <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">Active Longs</label>
-                        <input type="number" id="totalLongs" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Active Longs</label>
+                        <input type="number" id="totalLongs" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-1.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold text-slate-700 mb-1">Active Shorts</label>
-                        <input type="number" id="totalShorts" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-2.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
+                        <label class="block text-xs font-semibold text-slate-700 mb-1">Active Shorts</label>
+                        <input type="number" id="totalShorts" value="0" min="0" class="w-full rounded-lg border-slate-300 shadow-sm p-1.5 border focus:ring-blue-500 focus:border-blue-500" oninput="calculateRisk()">
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="result" class="mt-8 p-5 rounded-lg border transition-colors duration-200">
-            <h2 id="status" class="text-xl font-black tracking-tight"></h2>
-            <div class="mt-3 text-sm font-medium">
+        <div id="result" class="mt-5 p-4 rounded-lg border transition-colors duration-200">
+            <h2 id="status" class="text-lg font-black tracking-tight"></h2>
+            <div class="mt-2 text-xs font-medium">
                 <p id="limits" class="mb-1"></p>
                 <p id="explanation" class="opacity-80"></p>
             </div>
 
-            <div class="mt-4 p-3 bg-white/50 rounded border border-white/20">
-                <p id="points" class="font-bold text-base"></p>
+            <div id="pointsBox" class="mt-3 p-2 rounded border">
+                <p id="points" class="font-bold text-sm"></p>
             </div>
         </div>
     </div>
@@ -122,13 +122,22 @@
             const limitsText = document.getElementById('limits');
             const explanationText = document.getElementById('explanation');
             const pointsText = document.getElementById('points');
+            const pointsBox = document.getElementById('pointsBox');
 
             if (isSafe) {
-                resultDiv.className = "mt-8 p-5 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-800";
+                resultDiv.className = "mt-5 p-4 rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-800";
                 statusText.innerText = "✓ SAFE (Within Limits)";
+
+                // Set scaling trigger color to green to match SAFE status
+                pointsBox.className = "mt-3 p-2 rounded border bg-emerald-100 border-emerald-200";
+                pointsText.className = "font-bold text-sm text-emerald-900";
             } else {
-                resultDiv.className = "mt-8 p-5 rounded-lg border bg-rose-50 border-rose-200 text-rose-800";
+                resultDiv.className = "mt-5 p-4 rounded-lg border bg-rose-50 border-rose-200 text-rose-800";
                 statusText.innerText = "⚠ OVERLEVERAGED";
+
+                // Set scaling trigger color to red to match OVERLEVERAGED status
+                pointsBox.className = "mt-3 p-2 rounded border bg-red-100 border-red-200";
+                pointsText.className = "font-bold text-sm text-red-900";
             }
 
             limitsText.innerText = limitDisplay;
